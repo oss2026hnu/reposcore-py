@@ -25,17 +25,17 @@ pip install -e .
 ```
 
 ## 프로젝트 디렉토리 구성
-최상위에는 실행 진입점 역할의 파일을 두고, 주요 소스 코드는 별도 패키지 디렉토리에 둡니다.
+현재 프로젝트는 별도 패키지 디렉토리 구조 없이, 최상위 `main.py`를 실행 진입점으로 사용합니다.
+`pyproject.toml`의 `[project.scripts]`에서 `main:cli`를 콘솔 스크립트 진입점으로 설정합니다.
 
-```
+```text
 reposcore-py/
+├── main.py
 ├── pyproject.toml
 ├── README.md
-├── docs/
-│   └── python-guide.md
-└── reposcore/
-    ├── __init__.py
-    └── __main__.py
+└── docs/
+    ├── README.md
+    └── python-guide.md
 ```
 ## 타입 힌트 작성 가이드
 
