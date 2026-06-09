@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from gql import Client, gql
@@ -75,10 +75,8 @@ def main(
     ] = "txt",
     
     output: Annotated[
-        Optional[str],
-        typer.Option(
-            "--output",
-            "-o",
+        str | None,
+        typer.Option("--output", "-o",
             help=(
                 "결과를 저장할 출력 디렉터리 경로입니다. "
                 "생략하면 파일로 저장하지 않고 stdout에 출력합니다. 예: ./result"
@@ -86,7 +84,7 @@ def main(
         ),
     ] = None,
     token: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--token", "-t", help="GitHub Personal Access Token. 미제공 시 GITHUB_TOKEN 환경 변수를 사용합니다."),
     ] = None,
 ) -> None:
