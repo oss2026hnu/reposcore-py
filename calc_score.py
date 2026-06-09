@@ -12,6 +12,8 @@ SCORE_ISSUE_DOC = 1
 
 
 class UserContributionCounts(BaseModel):
+    """사용자별 PR/이슈 기여 개수를 담는 점수 계산 입력 모델입니다."""
+
     user: str
     feature_bug_pr_count: int = 0
     doc_pr_count: int = 0
@@ -21,6 +23,8 @@ class UserContributionCounts(BaseModel):
 
 
 class UserScore(BaseModel):
+    """사용자별 기여 개수와 최종 계산 점수를 함께 담는 점수 계산 결과 모델입니다."""
+    
     user: str
     score: int
     feature_bug_pr_count: int
