@@ -4,7 +4,8 @@
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "mechatroner.rainbow-csv"
       ]
     }
   }

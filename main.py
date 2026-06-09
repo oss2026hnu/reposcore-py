@@ -25,12 +25,7 @@ def split_repository(repository: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-def fetch_repository_counts(repository: str) -> dict[str, object]:
-    token = os.environ.get("GITHUB_TOKEN")
-
-    if not token:
-        raise RuntimeError("GitHub GraphQL API 호출을 위해 GITHUB_TOKEN 환경 변수가 필요합니다.")
-
+def fetch_repository_counts(repository: str, token: str) -> dict[str, object]:
     owner, name = split_repository(repository)
 
     transport = RequestsHTTPTransport(
@@ -78,9 +73,19 @@ def main(
         str,
         typer.Option("--format", "-f", help="출력 파일 형식을 지정합니다. (csv | txt | html)"),
     ] = "txt",
+    
     output: Annotated[
         str | None,
-        typer.Option("--output", "-o", help="결과를 저장할 출력 디렉터리 경로입니다. 예: ./result"),
+        typer.Option("--output", "-o",
+            help=(
+                "결과를 저장할 출력 디렉터리 경로입니다. "
+                "생략하면 파일로 저장하지 않고 stdout에 출력합니다. 예: ./result"
+            ),
+        ),
+    ] = None,
+    token: Annotated[
+        str | None,
+        typer.Option("--token", "-t", help="GitHub Personal Access Token. 미제공 시 GITHUB_TOKEN 환경 변수를 사용합니다."),
     ] = None,
 ) -> None:
     """Fetch basic repository counts from GitHub GraphQL API."""
@@ -91,9 +96,14 @@ def main(
 
     results: list[dict[str, object]] = []
 
+    resolved_token = token or os.environ.get("GITHUB_TOKEN")
+    if not resolved_token:
+        typer.echo("오류: GITHUB_TOKEN 환경 변수 또는 --token 옵션이 필요합니다.", err=True)
+        raise typer.Exit(1)
+    
     for repo in repos:
         try:
-            data = fetch_repository_counts(repo)
+            data = fetch_repository_counts(repo, resolved_token)
         except Exception as error:
             print(f"오류 ({repo}): {error}", file=sys.stderr)
             raise typer.Exit(1) from error
