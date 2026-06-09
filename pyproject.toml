@@ -23,4 +23,5 @@ only-include = [
   "main.py",
   "output_writer.py",
   "calc_score.py",
+  "repo_cache.py",
  ]

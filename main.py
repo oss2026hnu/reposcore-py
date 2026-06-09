@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
 
 from output_writer import build_output, write_output
+from repo_cache import get_cached_repository_counts, set_cached_repository_counts
 
 
 DEFAULT_REPOSITORY = "oss2026hnu/reposcore-py"
@@ -25,7 +26,15 @@ def split_repository(repository: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-def fetch_repository_counts(repository: str) -> dict[str, object]:
+def fetch_repository_counts(
+    repository: str,
+    use_cache: bool = True,
+) -> dict[str, Any]:
+    if use_cache:
+        cached_data = get_cached_repository_counts(repository)
+        if cached_data is not None:
+            return cached_data
+
     token = os.environ.get("GITHUB_TOKEN")
 
     if not token:
@@ -65,7 +74,12 @@ def fetch_repository_counts(repository: str) -> dict[str, object]:
             },
         )
 
-    return result["repository"]
+    repository_data = result["repository"]
+
+    if use_cache:
+        set_cached_repository_counts(repository, repository_data)
+
+    return repository_data
 
 
 @app.command()
@@ -82,6 +96,10 @@ def main(
         Optional[str],
         typer.Option("--output", "-o", help="결과를 저장할 출력 디렉터리 경로입니다. 예: ./result"),
     ] = None,
+    no_cache: Annotated[
+        bool,
+        typer.Option("--no-cache", help="캐시를 사용하지 않고 GitHub API에서 새로 조회합니다."),
+    ] = False,
 ) -> None:
     """Fetch basic repository counts from GitHub GraphQL API."""
 
@@ -89,11 +107,11 @@ def main(
         typer.echo("오류: 저장소를 하나 이상 입력해주세요.", err=True)
         raise typer.Exit(1)
 
-    results: list[dict[str, object]] = []
+    results: list[dict[str, Any]] = []
 
     for repo in repos:
         try:
-            data = fetch_repository_counts(repo)
+            data = fetch_repository_counts(repo, use_cache=not no_cache)
         except Exception as error:
             print(f"오류 ({repo}): {error}", file=sys.stderr)
             raise typer.Exit(1) from error
