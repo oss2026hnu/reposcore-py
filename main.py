@@ -6,10 +6,10 @@ from typing import Annotated
 
 import typer
 from gql import Client, gql
+from gql.transport.exceptions import TransportQueryError, TransportServerError
 from gql.transport.requests import RequestsHTTPTransport
 
 from output_writer import build_output, write_output
-
 
 DEFAULT_REPOSITORY = "oss2026hnu/reposcore-py"
 
@@ -91,7 +91,7 @@ def main(
     """Fetch basic repository counts from GitHub GraphQL API."""
 
     if len(repos) == 0:
-        typer.echo("오류: 저장소를 하나 이상 입력해주세요.", err=True)
+        print("오류: 저장소를 하나 이상 입력해주세요.", file=sys.stderr)
         raise typer.Exit(1)
 
     results: list[dict[str, object]] = []
@@ -104,17 +104,49 @@ def main(
     for repo in repos:
         try:
             data = fetch_repository_counts(repo, resolved_token)
-        except Exception as error:
+            results.append(data)
+        
+        except RuntimeError as error:
+            # 환경 변수 누락 등 설정 오류 (Exit Code: 1)
+            print(f"오류: {error}", file=sys.stderr)
+            raise typer.Exit(1) from error
+            
+        except ValueError as error:
+            # 파싱 불가능한 잘못된 저장소 주소 형식 (Exit Code: 1)
             print(f"오류 ({repo}): {error}", file=sys.stderr)
             raise typer.Exit(1) from error
-
-        results.append(data)
+            
+        except TransportQueryError as error:
+            # 저장소를 찾을 수 없는 경우 (GraphQL 응답 내 에러 발생) (Exit Code: 3)
+            print(f"오류 ({repo}): 저장소를 찾을 수 없습니다. 존재 여부와 권한을 확인하세요. (Detail: {error})", file=sys.stderr)
+            raise typer.Exit(3) from error
+            
+        except TransportServerError as error:
+            status_code = getattr(error, "code", None)
+            
+            if status_code in [403, 429]:
+                # API 호출 한도 초과 (Exit Code: 2)
+                print(f"오류 ({repo}): GitHub API 호출 한도(Rate Limit)를 초과했습니다. 잠시 후 다시 시도하세요. (Status: {status_code})", file=sys.stderr)
+                raise typer.Exit(2) from error
+            elif status_code == 401:
+                # 잘못된 토큰 입력 등 인증 실패 (Exit Code: 4)
+                print(f"오류 ({repo}): GitHub API 인증에 실패했습니다. GITHUB_TOKEN을 확인하세요. (Status: {status_code})", file=sys.stderr)
+                raise typer.Exit(4) from error
+            else:
+                # 기타 HTTP 통신 서버 에러 (Exit Code: 1)
+                print(f"오류 ({repo}): GitHub 서버 통신 중 HTTP 오류가 발생했습니다. (Status: {status_code})", file=sys.stderr)
+                raise typer.Exit(1) from error
+                
+        except Exception as error:
+            # 기타 예측하지 못한 런타임 예외 (Exit Code: 1)
+            print(f"오류 ({repo}): 시스템 예외가 발생했습니다: {error}", file=sys.stderr)
+            raise typer.Exit(1) from error
 
     try:
         content = build_output(results, format)
         write_output(content, output, format)
     except ValueError as error:
-        typer.echo(f"오류: {error}", err=True)
+        print(f"오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
 
 
