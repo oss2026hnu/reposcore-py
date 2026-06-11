@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated
 
@@ -9,10 +10,19 @@ import typer
 from gql.transport.exceptions import TransportQueryError, TransportServerError
 
 from calc_score import calculate_total_scores, UserContributionCounts
-from gh_service import fetch_contributions
+from gh_service import fetch_contributions, fetch_open_issue_claims
 from output_writer import build_output, write_output
 
 DEFAULT_REPOSITORY = "oss2026hnu/reposcore-py"
+
+# 기본 선점 키워드
+DEFAULT_CLAIM_KEYWORDS = [
+    "제가 하겠습니다",
+    "제가하겠습니다",
+    "진행하겠습니다",
+    "할게요",
+    "I'll take this",
+]
 
 app = typer.Typer(help="reposcore-py CLI")
 
@@ -64,6 +74,14 @@ def main(
         bool,
         typer.Option("--aggregate", help="여러 저장소의 결과를 하나로 합산하여 전체 기여 점수를 출력합니다."),
     ] = False,
+    claims: Annotated[
+        bool,
+        typer.Option("--claims", help="열린 issue의 선점 현황을 조회합니다."),
+    ] = False,
+    keywords: Annotated[
+        str | None,
+        typer.Option("--keywords", help="이슈 선점 키워드 목록입니다. 쉼표로 구분합니다."),
+    ] = None,
 ) -> None:
     """Fetch basic repository counts from GitHub GraphQL API."""
 
@@ -75,7 +93,64 @@ def main(
     if not resolved_token:
         typer.echo("오류: GITHUB_TOKEN 환경 변수 또는 --token 옵션이 필요합니다.", err=True)
         raise typer.Exit(1)
-        
+    # --claims 모드: 점수 계산 흐름을 실행하지 않고 선점 현황만 출력
+    if claims:
+        # 키워드 파싱: 사용자 지정 키워드가 없으면 기본 목록 사용
+        if keywords:
+            kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        else:
+            kw_list = DEFAULT_CLAIM_KEYWORDS
+
+        for repo in repos:
+            try:
+                claimed, unclaimed = fetch_open_issue_claims(repo, resolved_token, kw_list)
+            except Exception as error:
+                print(f"오류 ({repo}): {error}", file=sys.stderr)
+                raise typer.Exit(1) from error
+
+            typer.echo(f"[{repo}]")
+            typer.echo("선점된 이슈")
+            if claimed:
+                for item in claimed:
+                    typer.echo(f"- #{item['number']} {item['title']}")
+                    typer.echo(f"  URL: {item.get('url', '')}")
+                    typer.echo(f"  선점자: {item.get('matched_comment_author', 'unknown')}")
+                    
+                    created_at = item.get("matched_comment_created_at")
+                    if created_at:
+                        comment_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                        
+                        labels = [label.lower() for label in item.get("labels", [])]
+                        if "documentation" in labels:
+                            deadline_hours = 24
+                            status_text = "문서 [24시간 기한]"
+                        else:
+                            deadline_hours = 48
+                            status_text = "코드 [48시간 기한]"
+                            
+                        deadline = comment_time + timedelta(hours=deadline_hours)
+                        time_left = deadline - datetime.now(timezone.utc)
+                        if time_left.total_seconds() > 0:
+                            hours = int(time_left.total_seconds() // 3600)
+                            minutes = int((time_left.total_seconds() % 3600) // 60)
+                            typer.echo(f"  상태: {status_text} | 남은 시간: {hours}시간 {minutes}분")
+                        else:
+                            typer.echo(f"  상태: {status_text} | 남은 시간: 기한 만료")
+            else:
+                typer.echo("- 없음")
+
+            typer.echo("")
+            typer.echo("미선점 이슈")
+            if unclaimed:
+                for item in unclaimed:
+                    typer.echo(f"- #{item['number']} {item['title']}")
+                    typer.echo(f"  URL: {item.get('url', '')}")
+            else:
+                typer.echo("- 없음")
+
+            typer.echo("")
+
+        return None
     all_contributions: list[list[UserContributionCounts]] = []
     
     for repo in repos:

@@ -4,6 +4,7 @@ from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
 from pydantic import BaseModel
 from calc_score import UserContributionCounts
+from typing import List, Tuple
 
 
 # ── Pydantic 모델 정의 ──────────────────────────────────────────
@@ -48,6 +49,37 @@ class IssueResponse(BaseModel):
 
 class PRResponse(BaseModel):
     repository: PRRepository
+
+
+# 추가 Pydantic 모델: 이슈와 댓글 정보를 포함
+class CommentAuthor(BaseModel):
+    login: str | None
+
+class CommentNode(BaseModel):
+    author: CommentAuthor | None
+    bodyText: str | None
+    createdAt: str | None
+
+class CommentConnection(BaseModel):
+    nodes: list[CommentNode]
+
+class IssueClaimNode(BaseModel):
+    number: int
+    title: str
+    url: str
+    author: Author | None
+    labels: LabelConnection
+    comments: CommentConnection
+
+class IssueClaimConnection(BaseModel):
+    pageInfo: PageInfo
+    nodes: list[IssueClaimNode]
+
+class IssueClaimRepository(BaseModel):
+    issues: IssueClaimConnection
+
+class IssueClaimResponse(BaseModel):
+    repository: IssueClaimRepository
 
 
 # ── 클라이언트 생성 ──────────────────────────────────────────────
@@ -170,3 +202,93 @@ def fetch_contributions(repository: str, token: str) -> list[UserContributionCou
         cursor = prs.pageInfo.endCursor
 
     return list(contributions.values())
+
+
+def fetch_open_issue_claims(repository: str, token: str, keywords: List[str] | None = None) -> Tuple[list, list]:
+    """Open 이슈와 최근 댓글을 조회하여 선점 키워드 매칭 결과를 반환합니다.
+
+    반환값: (claimed_issues, unclaimed_issues)
+    claimed_issues: list of dict {number, title, url, author, labels, matched_comment_author, matched_keyword, matched_comment_body, matched_comment_created_at}
+    unclaimed_issues: list of dict {number, title, url, author, labels}
+    """
+    owner, name = repository.split("/", maxsplit=1)
+    client = create_client(token)
+
+    issue_claim_query = gql("""
+    query($owner: String!, $name: String!, $after: String) {
+        repository(owner: $owner, name: $name) {
+            issues(first: 100, after: $after, states: OPEN) {
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                    number
+                    title
+                    url
+                    author { login }
+                    labels(first: 10) { nodes { name } }
+                    comments(first: 10) {
+                        nodes { author { login } bodyText createdAt }
+                    }
+                }
+            }
+        }
+    }
+    """)
+
+    cursor = None
+    claimed: list = []
+    unclaimed: list = []
+
+    # 준비된 키워드 소문자 형태
+    if keywords:
+        lowered_keywords = [k.lower() for k in keywords]
+    else:
+        lowered_keywords = []
+
+    while True:
+        with client as session:
+            result = session.execute(issue_claim_query, variable_values={
+                "owner": owner,
+                "name": name,
+                "after": cursor,
+            })
+
+        response = IssueClaimResponse.model_validate(result)
+        issues = response.repository.issues
+
+        for node in issues.nodes:
+            labels = [label.name for label in node.labels.nodes]
+
+            issue_summary = {
+                "number": node.number,
+                "title": node.title,
+                "url": node.url,
+                "author": node.author.login if node.author is not None else None,
+                "labels": labels,
+            }
+
+            matched = False
+            # comments는 최신 순으로 가져오므로 첫 매칭을 선점으로 간주
+            for c in node.comments.nodes:
+                body = (c.bodyText or "").lower()
+                for kw in lowered_keywords:
+                    if kw and kw in body:
+                        claimed.append({
+                            **issue_summary,
+                            "matched_comment_author": c.author.login if c.author is not None else None,
+                            "matched_comment_body": c.bodyText,
+                            "matched_comment_created_at": c.createdAt,
+                            "matched_keyword": kw,
+                        })
+                        matched = True
+                        break
+                if matched:
+                    break
+
+            if not matched:
+                unclaimed.append(issue_summary)
+
+        if not issues.pageInfo.hasNextPage:
+            break
+        cursor = issues.pageInfo.endCursor
+
+    return claimed, unclaimed
