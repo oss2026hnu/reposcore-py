@@ -4,10 +4,12 @@ from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
 from pydantic import BaseModel
 from calc_score import UserContributionCounts
-from typing import List, Tuple
+from typing import List, Tuple, Generic, TypeVar
 
 
 # ── Pydantic 모델 정의 ──────────────────────────────────────────
+
+T = TypeVar("T")
 
 class Author(BaseModel):
     login: str
@@ -15,34 +17,26 @@ class Author(BaseModel):
 class Label(BaseModel):
     name: str
 
-class LabelConnection(BaseModel):
-    nodes: list[Label]
-
-class IssueNode(BaseModel):
-    author: Author | None
-    labels: LabelConnection
-
-class PRNode(BaseModel):
-    author: Author | None
-    labels: LabelConnection
-
 class PageInfo(BaseModel):
     hasNextPage: bool
     endCursor: str | None
 
-class IssueConnection(BaseModel):
-    pageInfo: PageInfo
-    nodes: list[IssueNode]
+class NodeList(BaseModel, Generic[T]):
+    nodes: list[T]
 
-class PRConnection(BaseModel):
+class Connection(BaseModel, Generic[T]):
     pageInfo: PageInfo
-    nodes: list[PRNode]
+    nodes: list[T]
+
+class AuthoredLabeledNode(BaseModel):
+    author: Author | None
+    labels: NodeList[Label]
 
 class IssueRepository(BaseModel):
-    issues: IssueConnection
+    issues: Connection[AuthoredLabeledNode]
 
 class PRRepository(BaseModel):
-    pullRequests: PRConnection
+    pullRequests: Connection[AuthoredLabeledNode]
 
 class IssueResponse(BaseModel):
     repository: IssueRepository
@@ -52,31 +46,19 @@ class PRResponse(BaseModel):
 
 
 # 추가 Pydantic 모델: 이슈와 댓글 정보를 포함
-class CommentAuthor(BaseModel):
-    login: str | None
-
 class CommentNode(BaseModel):
-    author: CommentAuthor | None
+    author: Author | None
     bodyText: str | None
     createdAt: str | None
 
-class CommentConnection(BaseModel):
-    nodes: list[CommentNode]
-
-class IssueClaimNode(BaseModel):
+class IssueClaimNode(AuthoredLabeledNode):
     number: int
     title: str
     url: str
-    author: Author | None
-    labels: LabelConnection
-    comments: CommentConnection
-
-class IssueClaimConnection(BaseModel):
-    pageInfo: PageInfo
-    nodes: list[IssueClaimNode]
+    comments: NodeList[CommentNode]
 
 class IssueClaimRepository(BaseModel):
-    issues: IssueClaimConnection
+    issues: Connection[IssueClaimNode]
 
 class IssueClaimResponse(BaseModel):
     repository: IssueClaimRepository
