@@ -17,37 +17,17 @@ class Label(BaseModel):
 class LabelConnection(BaseModel):
     nodes: list[Label]
 
-class IssueNode(BaseModel):
-    author: Author | None
-    labels: LabelConnection
-
-class PRNode(BaseModel):
-    author: Author | None
-    labels: LabelConnection
-
 class PageInfo(BaseModel):
     hasNextPage: bool
     endCursor: str | None
 
-class IssueConnection(BaseModel):
+class Node(BaseModel):
+    author: Author | None
+    labels: LabelConnection
+
+class Connection(BaseModel):
     pageInfo: PageInfo
-    nodes: list[IssueNode]
-
-class PRConnection(BaseModel):
-    pageInfo: PageInfo
-    nodes: list[PRNode]
-
-class IssueRepository(BaseModel):
-    issues: IssueConnection
-
-class PRRepository(BaseModel):
-    pullRequests: PRConnection
-
-class IssueResponse(BaseModel):
-    repository: IssueRepository
-
-class PRResponse(BaseModel):
-    repository: PRRepository
+    nodes: list[Node]
 
 
 # ── 클라이언트 생성 ──────────────────────────────────────────────
@@ -98,8 +78,7 @@ def fetch_contributions(repository: str, token: str) -> list[UserContributionCou
                 "after": cursor,
             })
 
-        response = IssueResponse.model_validate(result)
-        issues = response.repository.issues
+        issues = Connection.model_validate(result["repository"]["issues"])
 
         for node in issues.nodes:
             if node.author is None:
@@ -147,8 +126,7 @@ def fetch_contributions(repository: str, token: str) -> list[UserContributionCou
                 "after": cursor,
             })
 
-        response = PRResponse.model_validate(result)
-        prs = response.repository.pullRequests
+        prs = Connection.model_validate(result["repository"]["pullRequests"])
 
         for node in prs.nodes:
             if node.author is None:
