@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from enum import Enum
+from importlib.metadata import version, PackageNotFoundError
 from typing import Annotated
 from pathlib import Path
 
@@ -18,6 +19,15 @@ DEFAULT_REPOSITORY = "oss2026hnu/reposcore-py"
 
 app = typer.Typer(help="reposcore-py CLI")
 
+
+def version_callback(value: bool) -> None:
+    if value:
+        try:
+            ver = version("reposcore-py")
+        except PackageNotFoundError:
+            ver = "unknown"
+        typer.echo(ver)
+        raise typer.Exit()
 
 
 # --format 옵션을 csv, txt, html로 제한하기 위한 Enum 클래스 정의
@@ -41,7 +51,11 @@ def main(
     repos: Annotated[
         list[str],
         typer.Argument(help="조회할 GitHub 저장소 경로입니다. 예: owner/repo1 owner/repo2"),
-    ],
+    ] = None,
+    _version: Annotated[
+        bool,
+        typer.Option("--version", "-v", help="현재 버전을 출력하고 종료합니다.", is_eager=True, callback=version_callback),
+    ] = False,
     # 기존 str 타입에서 Enum(OutputFormatOption) 기반 타입으로 변경하여 CLI 검증 추가
     format: Annotated[
         OutputFormatOption,
@@ -69,7 +83,7 @@ def main(
 ) -> None:
     """Fetch basic repository counts from GitHub GraphQL API."""
 
-    if len(repos) == 0:
+    if not repos:
         print("오류: 저장소를 하나 이상 입력해주세요.", file=sys.stderr)
         raise typer.Exit(1)
 
