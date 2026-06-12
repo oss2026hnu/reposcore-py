@@ -20,38 +20,25 @@ class Label(BaseModel):
 class LabelConnection(BaseModel):
     nodes: list[Label]
 
-
-class IssueNode(BaseModel):
-    author: Author | None
-    labels: LabelConnection
-
-
-class PRNode(BaseModel):
-    author: Author | None
-    labels: LabelConnection
-
-
 class PageInfo(BaseModel):
     hasNextPage: bool
     endCursor: str | None
 
+class Node(BaseModel):
+    author: Author | None
+    labels: LabelConnection
 
-class IssueConnection(BaseModel):
+class Connection(BaseModel):
     pageInfo: PageInfo
-    nodes: list[IssueNode]
-
-
-class PRConnection(BaseModel):
-    pageInfo: PageInfo
-    nodes: list[PRNode]
+    nodes: list[Node]
 
 
 class IssueRepository(BaseModel):
-    issues: IssueConnection
+    issues: Connection
 
 
 class PRRepository(BaseModel):
-    pullRequests: PRConnection
+    pullRequests: Connection
 
 
 class IssueResponse(BaseModel):
@@ -97,7 +84,7 @@ def _get_contribution(
 
 def _add_issue_contribution(
     contributions: dict[str, UserContributionCounts],
-    node: IssueNode,
+    node: Node,
 ) -> None:
     if node.author is None:
         return
@@ -113,7 +100,7 @@ def _add_issue_contribution(
 
 def _add_pr_contribution(
     contributions: dict[str, UserContributionCounts],
-    node: PRNode,
+    node: Node,
 ) -> None:
     if node.author is None:
         return
@@ -248,8 +235,7 @@ def fetch_contributions(repository: str, token: str) -> list[UserContributionCou
                 },
             )
 
-        response = IssueResponse.model_validate(result)
-        issues = response.repository.issues
+        issues = Connection.model_validate(result["repository"]["issues"])
 
         for node in issues.nodes:
             _add_issue_contribution(contributions, node)
@@ -290,8 +276,7 @@ def fetch_contributions(repository: str, token: str) -> list[UserContributionCou
                 },
             )
 
-        response = PRResponse.model_validate(result)
-        prs = response.repository.pullRequests
+        prs = Connection.model_validate(result["repository"]["pullRequests"])
 
         for node in prs.nodes:
             _add_pr_contribution(contributions, node)
@@ -344,7 +329,7 @@ def fetch_multiple_contributions(
             )
 
             for index in active_indexes:
-                issues = IssueConnection.model_validate(
+                issues = Connection.model_validate(
                     result[f"repo{index}"]["issues"]
                 )
 
@@ -377,7 +362,7 @@ def fetch_multiple_contributions(
             )
 
             for index in active_indexes:
-                prs = PRConnection.model_validate(
+                prs = Connection.model_validate(
                     result[f"repo{index}"]["pullRequests"]
                 )
 
