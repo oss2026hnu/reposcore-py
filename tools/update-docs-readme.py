@@ -1,12 +1,12 @@
 from pathlib import Path
 
 DOCS_DIR = Path("docs")
+TEMPLATE_PATH = DOCS_DIR / "README-template.md"
 README_PATH = DOCS_DIR / "README.md"
 
-START_MARKER = "<!-- DOCS_LIST_START -->"
-END_MARKER = "<!-- DOCS_LIST_END -->"
+DOCS_LIST_PLACEHOLDER = "{{ DOCS_LIST }}"
 
-EXCLUDED_FILES = {"README.md"}
+EXCLUDED_FILES = {"README.md", "README-template.md"}
 
 
 def extract_title(path: Path) -> str:
@@ -40,61 +40,27 @@ def build_docs_list() -> str:
     return "\n".join(rows)
 
 
-def build_docs_section() -> str:
-    """Build the managed docs list section."""
-    docs_list = build_docs_list()
-
-    return (
-        "# 문서 목록\n\n"
-        f"{START_MARKER}\n"
-        f"{docs_list}\n"
-        f"{END_MARKER}\n"
-    )
-
-
-def replace_managed_section(readme_text: str, docs_section: str) -> str:
-    """Replace existing managed docs list section in docs/README.md."""
-    if START_MARKER in readme_text and END_MARKER in readme_text:
-        start_index = readme_text.index(START_MARKER)
-        end_index = readme_text.index(END_MARKER) + len(END_MARKER)
-
-        before = readme_text[:start_index]
-        after = readme_text[end_index:]
-
-        docs_list = build_docs_list()
-
-        return (
-            before
-            + START_MARKER
-            + "\n"
-            + docs_list
-            + "\n"
-            + END_MARKER
-            + after
+def render_readme(template_text: str) -> str:
+    """Render docs/README.md from docs/README-template.md."""
+    if DOCS_LIST_PLACEHOLDER not in template_text:
+        raise ValueError(
+            f"{TEMPLATE_PATH} 파일에 {DOCS_LIST_PLACEHOLDER} placeholder가 없습니다."
         )
 
-    heading = "# 문서 목록"
-
-    if heading in readme_text:
-        heading_index = readme_text.index(heading)
-        return readme_text[:heading_index] + docs_section
-
-    separator = "\n\n" if readme_text.endswith("\n") else "\n\n"
-    return readme_text + separator + docs_section
+    return template_text.replace(DOCS_LIST_PLACEHOLDER, build_docs_list())
 
 
 def update_readme() -> None:
-    """Update docs/README.md with the current docs/*.md list."""
-    if not README_PATH.exists():
-        raise FileNotFoundError(f"{README_PATH} 파일을 찾을 수 없습니다.")
+    """Generate docs/README.md from docs/README-template.md."""
+    if not TEMPLATE_PATH.exists():
+        raise FileNotFoundError(f"{TEMPLATE_PATH} 파일을 찾을 수 없습니다.")
 
-    readme_text = README_PATH.read_text(encoding="utf-8")
-    docs_section = build_docs_section()
-    updated_text = replace_managed_section(readme_text, docs_section)
+    template_text = TEMPLATE_PATH.read_text(encoding="utf-8")
+    updated_text = render_readme(template_text)
 
     README_PATH.write_text(updated_text, encoding="utf-8")
 
 
 if __name__ == "__main__":
     update_readme()
-    print(f"Updated {README_PATH}")
+    print(f"Updated {README_PATH} from {TEMPLATE_PATH}")
