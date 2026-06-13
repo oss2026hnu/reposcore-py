@@ -16,8 +16,6 @@ from calc_score import UserContributionCounts, calculate_total_scores
 from gh_service import fetch_contributions, fetch_multiple_contributions
 from output_writer import build_output, write_output
 
-DEFAULT_REPOSITORY = "oss2026hnu/reposcore-py"
-
 app = typer.Typer(help="reposcore-py CLI")
 
 
