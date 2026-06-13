@@ -58,6 +58,8 @@ Options
                                                 점수를 출력합니다.
   --no-cache                                    캐시를 사용하지 않고 GitHub API에서 최신 데이터를
                                                 다시 조회합니다.
+  --cache-ttl-hours             INTEGER         지정한 시간보다 오래된 캐시는 무시하고 새로
+                                                조회합니다.
   --since                       TEXT            이 날짜 이후의 기여만 점수 계산에 포함합니다. 예:
                                                 2026-06-01 (YYYY-MM-DD)
   --until                       TEXT            이 날짜까지의 기여만 점수 계산에 포함합니다. 예:

@@ -1,9 +1,8 @@
 from __future__ import annotations
-from datetime import datetime, timezone, date
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -80,6 +79,31 @@ def _score_to_result(score: UserScore) -> dict:
     }
 
 
+def _is_cache_fresh(cached_data: dict, cache_ttl_hours: int | None) -> bool:
+    """cache_ttl_hours 기준으로 캐시 신선도를 판단합니다."""
+    if cache_ttl_hours is None:
+        return True
+
+    metadata = cached_data.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+
+    generated_at_raw = metadata.get("generatedAt")
+    if not isinstance(generated_at_raw, str):
+        return False
+
+    try:
+        generated_at = datetime.fromisoformat(generated_at_raw)
+    except ValueError:
+        return False
+
+    if generated_at.tzinfo is None:
+        generated_at = generated_at.replace(tzinfo=timezone.utc)
+
+    age = datetime.now(timezone.utc) - generated_at
+    return age <= timedelta(hours=cache_ttl_hours)
+
+
 def _load_or_fetch_contributions(
     repos: list[str],
     token: str,
@@ -87,6 +111,7 @@ def _load_or_fetch_contributions(
     no_cache: bool = False,
     since: date | None = None,
     until: date | None = None,
+    cache_ttl_hours: int | None = None,
 ) -> list[list[UserContributionCounts]]:
     all_contributions: list[list[UserContributionCounts]] = [[] for _ in repos]
     cache_paths: list[Path | None] = []
@@ -104,7 +129,11 @@ def _load_or_fetch_contributions(
         cache_paths.append(cache_path)
         cached_data = load_cache(cache_path) if cache_path else {}
 
-        if "contributions" in cached_data:
+        use_cache = "contributions" in cached_data and _is_cache_fresh(
+            cached_data, cache_ttl_hours
+        )
+
+        if use_cache:
             all_contributions[index] = [
                 UserContributionCounts(**contribution)
                 for contribution in cached_data["contributions"]
@@ -216,6 +245,13 @@ def main(
             help="캐시를 사용하지 않고 GitHub API에서 최신 데이터를 다시 조회합니다.",
         ),
     ] = False,
+    cache_ttl_hours: Annotated[
+        int | None,
+        typer.Option(
+            "--cache-ttl-hours",
+            help="지정한 시간보다 오래된 캐시는 무시하고 새로 조회합니다.",
+        ),
+    ] = None,
     since: Annotated[
         str | None,
         typer.Option("--since", help="이 날짜 이후의 기여만 점수 계산에 포함합니다. 예: 2026-06-01 (YYYY-MM-DD)"),
@@ -267,6 +303,7 @@ def main(
             no_cache,
             parsed_since,
             parsed_until,
+            cache_ttl_hours,
         )
 
     except ValueError as error:
