@@ -73,3 +73,4 @@ Usage: reposcore [OPTIONS] REPOS...
 │ --help                                        Show this message and exit.    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
+
