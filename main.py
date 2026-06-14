@@ -41,13 +41,6 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-# --format 옵션을 csv, txt, html로 제한하기 위한 Enum 클래스 정의
-class OutputFormatOption(str, Enum):
-    csv = "csv"
-    txt = "txt"
-    html = "html"
-
-
 def split_repository(repository: str) -> tuple[str, str]:
     parts = repository.split("/")
 
@@ -146,7 +139,6 @@ def _load_or_fetch_contributions(
         owner, repo_name = split_repository(repo)
         cache_path = None
 
-        # --no-cache 가 지정되면 캐시 경로를 만들지 않아 읽기/쓰기 모두 건너뜁니다.
         if not no_cache:
             cache_path = Path(output) / f"{owner}_{repo_name}" / "cache.json"
 
@@ -226,13 +218,19 @@ def main(
             callback=version_callback,
         ),
     ] = False,
-    # 기존 str 타입에서 Enum(OutputFormatOption) 기반 타입으로 변경하여 CLI 검증 추가
+    # [변경 사항] 다중 포맷 지정을 지원하도록 str 타입으로 변경
     format: Annotated[
-        OutputFormatOption,
+        str,
         typer.Option(
-            "--format", "-f", help="출력 파일 형식을 지정합니다. (csv | txt | html)"
+            "--format",
+            "-f",
+            help=(
+                "출력 파일 형식을 지정합니다. 쉼표(,)로 구분하여 여러 형식을 지정할 수 있습니다. "
+                "사용 가능한 형식: csv, txt, html. 형식을 지정하지 않거나 공백/쉼표만 입력할 경우 "
+                "기본적으로 모든 형식(csv, txt, html)으로 내보냅니다."
+            ),
         ),
-    ] = OutputFormatOption.txt,
+    ] = "",
     output: Annotated[
         str,
         typer.Option(
@@ -252,7 +250,6 @@ def main(
             ),
         ),
     ] = None,
-    # 요구사항에 명시된 다중 저장소 집계 여부 선택을 위한 플래그 추가
     aggregate: Annotated[
         bool,
         typer.Option(
@@ -396,14 +393,43 @@ def main(
         print(f"오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
 
-    # --- 수집 완료 데이터 출력 및 집계(--aggregate) 제어 로직 ---
-    format_value = format.value
+    # --- [핵심 버그 수정 및 조치 구역] 다중 포맷 파싱 및 정규화 로직 (lower() 메서드로 정상 수정) ---
+    allowed_formats = {"csv", "txt", "html"}
+    selected_formats: list[str] = []
+
+    if format:
+        # 1. 쉼표 분리 -> 2. 공백 제거 -> 3. 파이썬 사양에 맞는 소문자 변환(.lower()) -> 4. 빈 문자열 필터링
+        tokens = [t.strip().lower() for t in format.split(",") if t.strip()]
+        
+        # 5. 중복 제거 (입력 순서 유지)
+        unique_tokens = []
+        for token in tokens:
+            if token not in unique_tokens:
+                unique_tokens.append(token)
+
+        # 6. 유효한 토큰 검증 및 목록 선별
+        for token in unique_tokens:
+            if token in allowed_formats:
+                selected_formats.append(token)
+            else:
+                print(
+                    f"안내: '{token}'은(는) 유효한 형식이 아니므로 제외합니다. "
+                    "(사용 가능한 형식: csv, txt, html)",
+                    file=sys.stderr,
+                )
+
+    # 7. 유효한 형식이 하나도 남지 않았을 때 전체 포맷 기본 설정 및 안내 메시지 표출
+    if not selected_formats:
+        print(
+            "안내: 유효한 형식이 지정되지 않았으므로 전체 형식(csv, txt, html)으로 출력을 진행합니다.",
+            file=sys.stderr,
+        )
+        selected_formats = ["csv", "txt", "html"]
 
     try:
         if aggregate:
             scores = calculate_total_scores(all_contributions)
         else:
-            # 저장소별로 점수를 매긴 뒤 하나의 목록으로 펼칩니다.
             scores = [
                 score
                 for repo_contributions in all_contributions
@@ -412,12 +438,14 @@ def main(
 
         results = [_score_to_result(score) for score in scores]
 
-        # 사용자가 선택한 형식만 파일로 저장
-        content = build_output(results, format_value)
-        saved_path = write_output(content, output, format_value)
-
         print("결과가 다음 경로에 저장되었습니다:")
-        print(f"  - {saved_path.absolute()}")
+        
+        # 다중 포맷 저장을 지원하도록 반복 루프 처리 적용
+        for fmt in selected_formats:
+            content = build_output(results, fmt)
+            saved_path = write_output(content, output, fmt)
+            print(f"  - {saved_path.absolute()}")
+
     except Exception as error:
         print(f"출력 오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
