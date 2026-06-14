@@ -6,6 +6,22 @@ A CLI for scoring student participation in an open-source class repo, implemente
 
 처음 도구를 사용하는 분들을 위한 구체적인 실행 예시입니다. 아래 명령어들을 복사하여 터미널에서 바로 테스트해 볼 수 있습니다.
 
+### 실행 전 준비
+
+`reposcore-py`는 GitHub GraphQL API를 사용하므로 GitHub Personal Access Token이 필요합니다.
+
+토큰은 `GITHUB_TOKEN` 환경 변수로 설정할 수 있습니다.
+
+```bash
+export GITHUB_TOKEN=YOUR_GITHUB_TOKEN
+```
+
+또는 실행할 때 `--token` 옵션으로 직접 전달할 수도 있습니다.
+
+```bash
+reposcore oss2026hnu/reposcore-py --token YOUR_GITHUB_TOKEN
+```
+
 ### 1. 단일 저장소 조회
 가장 기본적인 형태로, 하나의 저장소에 대한 기여자 점수를 조회합니다.
 ```bash
