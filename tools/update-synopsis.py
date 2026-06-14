@@ -32,7 +32,7 @@ def capture_cli_help() -> str:
 
     last_error = ""
     env = os.environ.copy()
-    env["COLUMNS"] = "100"
+    env["COLUMNS"] = "160"
 
     # CI 환경(GitHub Actions 등)에서 Rich의 강제 색상/서식 출력 방지
     env["NO_COLOR"] = "1"
