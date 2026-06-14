@@ -7,7 +7,10 @@
         "tamasfe.even-better-toml",
         "mechatroner.rainbow-csv",
         "ms-vscode.live-server"
-      ]
+      ],
+       "settings": {
+        "python.analysis.typeCheckingMode": "standard"
+      }
     }
   }
 }
