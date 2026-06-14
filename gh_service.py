@@ -34,6 +34,7 @@ class Node(BaseModel):
     labels: LabelConnection
     createdAt: str | None = None
     mergedAt: str | None = None
+    stateReason: str | None = None
 
 
 class Connection(BaseModel):
@@ -119,6 +120,10 @@ def _add_issue_contribution(
     if node.author is None:
         return
 
+    # 중복 또는 계획되지 않음으로 닫힌 이슈는 제외
+    if node.stateReason in ["DUPLICATE", "NOT_PLANNED"]:
+        return
+
     if not _is_in_date_range(node.createdAt, since, until):
         return
 
@@ -177,6 +182,7 @@ def _build_issue_alias_query(indexes: list[int]):
                     nodes {{
                         author {{ login }}
                         createdAt
+                        stateReason
                         labels(first: 10) {{
                             nodes {{ name }}
                         }}
@@ -260,6 +266,7 @@ def fetch_contributions(
                 nodes {
                     author { login }
                     createdAt
+                    stateReason
                     labels(first: 10) {
                         nodes { name }
                     }
