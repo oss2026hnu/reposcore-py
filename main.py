@@ -68,6 +68,20 @@ def split_repository(repository: str) -> tuple[str, str]:
 
     return parts[0], parts[1]
 
+
+def _validate_unique_repositories(repos: list[str]) -> None:
+    """입력된 저장소 목록 중 중복된 저장소가 있는지 유효성을 검증합니다."""
+    seen = set()
+    for repo in repos:
+        # 형식 유효성을 먼저 확인한 뒤 중복성 검사를 수행합니다.
+        split_repository(repo)
+        
+        repo_lower = repo.lower()
+        if repo_lower in seen:
+            raise ValueError(f"같은 저장소가 중복 입력되었습니다: {repo}")
+        seen.add(repo_lower)
+
+
 def _format_cache_date(value: date | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -266,7 +280,7 @@ def main(
                 "미제공 시 GITHUB_TOKEN 환경 변수를 사용합니다."
             ),
         ),
-    ],
+    ] = None,
     # 요구사항에 명시된 다중 저장소 집계 여부 선택을 위한 플래그 추가
     aggregate: Annotated[
         bool,
@@ -333,6 +347,12 @@ def main(
 
     if len(repos) == 0:
         print("오류: 저장소를 하나 이상 입력해주세요.", file=sys.stderr)
+        raise typer.Exit(1)
+
+    try:
+        _validate_unique_repositories(repos)
+    except ValueError as error:
+        print(f"오류: {error}", file=sys.stderr)
         raise typer.Exit(1)
 
     resolved_token = token or os.environ.get("GITHUB_TOKEN")
