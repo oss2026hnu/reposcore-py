@@ -26,8 +26,8 @@ README_OUTPUT = ROOT / "README.md"
 
 def capture_cli_help() -> str:
     candidates = [
-        ["reposcore", "--help"],
         [sys.executable, str(ROOT / "main.py"), "--help"],
+        ["reposcore", "--help"],
     ]
 
     last_error = ""
@@ -55,6 +55,8 @@ def capture_cli_help() -> str:
         output = ((proc.stdout or "") + (proc.stderr or "")).strip()
 
         if proc.returncode == 0 and output:
+            if command[0] == sys.executable:
+                output = output.replace("Usage: main.py", "Usage: reposcore", 1)
             return output
 
         last_error = output or f"{command} returned exit code {proc.returncode}"

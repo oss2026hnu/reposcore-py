@@ -34,6 +34,17 @@ reposcore oss2026hnu/reposcore-py --format html
 reposcore oss2026hnu/reposcore-py --format html --output ./result
 ```
 
+### 5. `--aggregate` 옵션을 사용한 다중 저장소 점수 합산
+여러 저장소를 조회할 때, 기본값은 저장소별로 점수를 각각 출력합니다.
+`--aggregate` 옵션을 붙이면 여러 저장소의 기여를 사용자 단위로 합산하여 전체 점수를 출력합니다.
+```bash
+# 저장소별 점수를 각각 출력 (기본 동작)
+reposcore oss2026hnu/reposcore-py oss2026hnu/reposcore-cs
+
+# 두 저장소의 기여를 합산한 전체 점수 출력
+reposcore oss2026hnu/reposcore-py oss2026hnu/reposcore-cs --aggregate
+```
+
 ## Synopsis
 
 ```text

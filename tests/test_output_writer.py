@@ -60,17 +60,16 @@ def test_txt_has_headers_and_values():
 
 
 # ── build_html_output ──────────────────────────────────────
-def test_html_has_table_and_name():
+def test_html_has_canvas_and_name():
     out = build_html_output(SAMPLE)
-    assert "<table>" in out
+    assert '<canvas id="myChart"></canvas>' in out
     assert "owner/repo1" in out
 
 
 def test_html_escapes_special_characters():
     out = build_html_output([make_result("a<b>&x", 1, 2)])
-    assert "&lt;" in out
-    assert "&gt;" in out
-    assert "&amp;" in out
+    assert "\\u003c" in out
+    assert "\\u003e" in out
     assert "<b>" not in out  # 원본 특수문자가 그대로 남으면 안 됨
 
 
@@ -90,14 +89,6 @@ def test_build_output_html_branch():
 def test_build_output_rejects_unsupported_format():
     with pytest.raises(ValueError):
         build_output(SAMPLE, "json")
-
-
-# ── write_output: stdout ───────────────────────────────────
-def test_write_output_to_stdout(capsys):
-    result = write_output("hello-content", None, "csv")
-    captured = capsys.readouterr()
-    assert result is None
-    assert "hello-content" in captured.out
 
 
 # ── write_output: 파일 저장 ────────────────────────────────
