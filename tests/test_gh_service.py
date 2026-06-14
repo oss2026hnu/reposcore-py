@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from gh_service import fetch_contributions
+from gh_service import (
+    _classify_issue_labels,
+    _classify_pr_labels,
+    fetch_contributions,
+)
 
 
 def make_issue_response(
@@ -272,3 +276,33 @@ def test_pagination(monkeypatch: pytest.MonkeyPatch):
     assert contribs_by_user["user1"].typo_pr_count == 1
 
     assert contribs_by_user["user2"].feature_bug_pr_count == 1
+
+
+def test_classify_issue_labels_prioritizes_feature_bug_over_documentation():
+    assert _classify_issue_labels(["documentation", "bug"]) == "feature_bug"
+    assert _classify_issue_labels(["documentation", "enhancement"]) == "feature_bug"
+
+
+def test_classify_issue_labels_keeps_existing_single_label_behavior():
+    assert _classify_issue_labels(["documentation"]) == "documentation"
+    assert _classify_issue_labels(["bug"]) == "feature_bug"
+    assert _classify_issue_labels(["enhancement"]) == "feature_bug"
+    assert _classify_issue_labels(["unknown", "documentation"]) == "documentation"
+
+
+def test_classify_pr_labels_prioritizes_feature_bug_over_lower_score_labels():
+    assert _classify_pr_labels(["documentation", "bug"]) == "feature_bug"
+    assert _classify_pr_labels(["documentation", "enhancement"]) == "feature_bug"
+    assert _classify_pr_labels(["typo", "bug"]) == "feature_bug"
+    assert _classify_pr_labels(["typo", "enhancement"]) == "feature_bug"
+
+
+def test_classify_pr_labels_prioritizes_documentation_over_typo():
+    assert _classify_pr_labels(["documentation", "typo"]) == "documentation"
+
+
+def test_classify_pr_labels_keeps_existing_single_label_behavior():
+    assert _classify_pr_labels(["documentation"]) == "documentation"
+    assert _classify_pr_labels(["typo"]) == "typo"
+    assert _classify_pr_labels(["bug"]) == "feature_bug"
+    assert _classify_pr_labels(["enhancement"]) == "feature_bug"

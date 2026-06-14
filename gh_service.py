@@ -108,6 +108,29 @@ def _get_contribution(
     return contributions[user]
 
 
+def _classify_issue_labels(labels: list[str]) -> str | None:
+    if "bug" in labels or "enhancement" in labels:
+        return "feature_bug"
+
+    if "documentation" in labels:
+        return "documentation"
+
+    return None
+
+
+def _classify_pr_labels(labels: list[str]) -> str | None:
+    if "bug" in labels or "enhancement" in labels:
+        return "feature_bug"
+
+    if "documentation" in labels:
+        return "documentation"
+
+    if "typo" in labels:
+        return "typo"
+
+    return None
+
+
 def _add_issue_contribution(
     contributions: dict[str, UserContributionCounts],
     node: Node,
@@ -122,11 +145,12 @@ def _add_issue_contribution(
 
     contribution = _get_contribution(contributions, node.author.login)
     labels = [label.name.lower() for label in node.labels.nodes]
+    label_type = _classify_issue_labels(labels)
 
-    if "documentation" in labels:
-        contribution.doc_issue_count += 1
-    elif "bug" in labels or "enhancement" in labels:
+    if label_type == "feature_bug":
         contribution.feature_bug_issue_count += 1
+    elif label_type == "documentation":
+        contribution.doc_issue_count += 1
 
 
 def _add_pr_contribution(
@@ -143,13 +167,14 @@ def _add_pr_contribution(
 
     contribution = _get_contribution(contributions, node.author.login)
     labels = [label.name.lower() for label in node.labels.nodes]
+    label_type = _classify_pr_labels(labels)
 
-    if "documentation" in labels:
-        contribution.doc_pr_count += 1
-    elif "typo" in labels:
-        contribution.typo_pr_count += 1
-    elif "bug" in labels or "enhancement" in labels:
+    if label_type == "feature_bug":
         contribution.feature_bug_pr_count += 1
+    elif label_type == "documentation":
+        contribution.doc_pr_count += 1
+    elif label_type == "typo":
+        contribution.typo_pr_count += 1
 
 
 def _build_issue_alias_query(indexes: list[int]):
