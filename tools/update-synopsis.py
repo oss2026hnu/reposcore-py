@@ -26,8 +26,8 @@ README_OUTPUT = ROOT / "README.md"
 
 def capture_cli_help() -> str:
     candidates = [
-        ["reposcore", "--help"],
         [sys.executable, str(ROOT / "main.py"), "--help"],
+        ["reposcore", "--help"],
     ]
 
     last_error = ""
