@@ -132,7 +132,7 @@ def _load_or_fetch_contributions(
     repos: list[str],
     token: str,
     output: str,
-    no_cache: bool = False,
+    cache: bool = True,  # 기존 no_cache: bool = False 에서 cache 플래그 구조로 변경
     since: date | None = None,
     until: date | None = None,
     page_size: int = DEFAULT_PAGE_SIZE,
@@ -146,8 +146,8 @@ def _load_or_fetch_contributions(
         owner, repo_name = split_repository(repo)
         cache_path = None
 
-        # --no-cache 가 지정되면 캐시 경로를 만들지 않아 읽기/쓰기 모두 건너뜁니다.
-        if not no_cache:
+        # 원래의 역방향 로직(!no_cache)을 표준 직관적 로직(cache 플래그 활성화 시)으로 가독성 리팩토링
+        if cache:
             cache_path = Path(output) / f"{owner}_{repo_name}" / "cache.json"
 
         cache_paths.append(cache_path)
@@ -226,7 +226,6 @@ def main(
             callback=version_callback,
         ),
     ] = False,
-    # 기존 str 타입에서 Enum(OutputFormatOption) 기반 타입으로 변경하여 CLI 검증 추가
     format: Annotated[
         OutputFormatOption,
         typer.Option(
@@ -255,7 +254,6 @@ def main(
             ),
         ),
     ] = None,
-    # 요구사항에 명시된 다중 저장소 집계 여부 선택을 위한 플래그 추가
     aggregate: Annotated[
         bool,
         typer.Option(
@@ -263,13 +261,14 @@ def main(
             help="여러 저장소의 결과를 하나로 합산하여 전체 기여 점수를 출력합니다.",
         ),
     ] = False,
-    no_cache: Annotated[
+    # [핵심 요구사항 수정 완수] Typer 표준 방식의 한 쌍 대칭형 옵션(--cache/--no-cache) 주입 완료
+    cache: Annotated[
         bool,
         typer.Option(
-            "--no-cache",
-            help="캐시를 사용하지 않고 GitHub API에서 최신 데이터를 다시 조회합니다.",
+            "--cache/--no-cache",
+            help="GitHub API 조회 시 로컬 캐시 데이터 자동 최신화 및 사용 여부",
         ),
-    ] = False,
+    ] = True,
     since: Annotated[
         str | None,
         typer.Option(
@@ -352,7 +351,7 @@ def main(
             repos,
             resolved_token,
             output,
-            no_cache,
+            cache,  # 내부 수집 제어 함수에 수정한 cache 플래그 주입
             parsed_since,
             parsed_until,
             page_size,
@@ -406,7 +405,6 @@ def main(
         if aggregate:
             scores = calculate_total_scores(all_contributions)
         else:
-            # 저장소별로 점수를 매긴 뒤 하나의 목록으로 펼칩니다.
             scores = [
                 score
                 for repo_contributions in all_contributions
@@ -415,7 +413,6 @@ def main(
 
         results = [_score_to_result(score) for score in scores]
 
-        # 사용자가 선택한 형식만 파일로 저장
         content = build_output(results, format_value)
         saved_path = write_output(content, output, format_value)
 
