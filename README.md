@@ -58,9 +58,12 @@ Arguments
 
 Options
   --version             -v                                 현재 버전을 출력하고 종료합니다.
-  --format              -f      [csv|txt|html]             출력 파일 형식을 지정합니다. (csv | tx…
-                                                           | html)
-                                                           [default: txt]
+  --format              -f      TEXT                       출력 파일 형식을 지정합니다. 쉼표(,)로
+                                                           구분하여 여러 형식을 지정할 수
+                                                           있습니다. 사용 가능한 형식: csv, txt,
+                                                           html. 형식을 지정하지 않거나
+                                                           공백/쉼표만 입력할 경우 기본적으로 모 …
+                                                           형식(csv, txt, html)으로 내보냅니다.
   --output              -o      TEXT                       결과를 저장할 출력 디렉터리 경로입니다.
                                                            [default: ./result]
   --token               -t      TEXT                       GitHub Personal Access Token. 미제공  …
