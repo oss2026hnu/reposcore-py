@@ -66,6 +66,20 @@ def create_client(token: str) -> Client:
     return Client(transport=transport, fetch_schema_from_transport=False)
 
 
+# ── 라벨 별칭 그룹 ──────────────────────────────────────────────
+DOC_LABELS = {"documentation", "docs", "doc"}
+FEATURE_BUG_LABELS = {"bug", "enhancement", "feature", "feat"}
+TYPO_LABELS = {"typo"}
+
+
+def _normalize_label_names(labels: list[Label]) -> set[str]:
+    return {label.name.strip().lower() for label in labels}
+
+
+def _has_any_label(labels: set[str], candidates: set[str]) -> bool:
+    return not labels.isdisjoint(candidates)
+
+
 # ── 날짜 필터링 유틸리티 ─────────────────────────────────────────
 def _is_in_date_range(
     date_str: str | None,
@@ -121,11 +135,11 @@ def _add_issue_contribution(
         return
 
     contribution = _get_contribution(contributions, node.author.login)
-    labels = [label.name.lower() for label in node.labels.nodes]
+    labels = _normalize_label_names(node.labels.nodes)
 
-    if "documentation" in labels:
+    if _has_any_label(labels, DOC_LABELS):
         contribution.doc_issue_count += 1
-    elif "bug" in labels or "enhancement" in labels:
+    elif _has_any_label(labels, FEATURE_BUG_LABELS):
         contribution.feature_bug_issue_count += 1
 
 
@@ -142,13 +156,13 @@ def _add_pr_contribution(
         return
 
     contribution = _get_contribution(contributions, node.author.login)
-    labels = [label.name.lower() for label in node.labels.nodes]
+    labels = _normalize_label_names(node.labels.nodes)
 
-    if "documentation" in labels:
+    if _has_any_label(labels, DOC_LABELS):
         contribution.doc_pr_count += 1
-    elif "typo" in labels:
+    elif _has_any_label(labels, TYPO_LABELS):
         contribution.typo_pr_count += 1
-    elif "bug" in labels or "enhancement" in labels:
+    elif _has_any_label(labels, FEATURE_BUG_LABELS):
         contribution.feature_bug_pr_count += 1
 
 

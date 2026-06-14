@@ -272,3 +272,79 @@ def test_pagination(monkeypatch: pytest.MonkeyPatch):
     assert contribs_by_user["user1"].typo_pr_count == 1
 
     assert contribs_by_user["user2"].feature_bug_pr_count == 1
+
+
+def test_issue_alias_labels(monkeypatch: pytest.MonkeyPatch):
+    def mock_execute(query, variable_values):
+        query_str = str(query)
+        if "issues(" in query_str:
+            return make_issue_response(
+                [
+                    make_node("user1", ["docs"]),
+                    make_node("user1", ["doc"]),
+                    make_node("user1", ["feature"]),
+                    make_node("user1", ["feat"]),
+                ],
+            )
+        if "pullRequests(" in query_str:
+            return make_pr_response([])
+        return {}
+
+    monkeypatch.setattr(
+        "gh_service.create_client",
+        lambda token: DummyClient(mock_execute),
+    )
+
+    contribs = fetch_contributions("owner/repo", "dummy_token")
+    assert contribs[0].doc_issue_count == 2
+    assert contribs[0].feature_bug_issue_count == 2
+
+
+def test_pr_alias_labels(monkeypatch: pytest.MonkeyPatch):
+    def mock_execute(query, variable_values):
+        query_str = str(query)
+        if "issues(" in query_str:
+            return make_issue_response([])
+        if "pullRequests(" in query_str:
+            return make_pr_response(
+                [
+                    make_node("user1", ["docs"]),
+                    make_node("user1", ["doc"]),
+                    make_node("user1", ["feature"]),
+                    make_node("user1", ["feat"]),
+                ],
+            )
+        return {}
+
+    monkeypatch.setattr(
+        "gh_service.create_client",
+        lambda token: DummyClient(mock_execute),
+    )
+
+    contribs = fetch_contributions("owner/repo", "dummy_token")
+    assert contribs[0].doc_pr_count == 2
+    assert contribs[0].feature_bug_pr_count == 2
+
+
+def test_label_case_and_whitespace_normalized(monkeypatch: pytest.MonkeyPatch):
+    def mock_execute(query, variable_values):
+        query_str = str(query)
+        if "issues(" in query_str:
+            return make_issue_response(
+                [
+                    make_node("user1", ["  Docs  "]),
+                    make_node("user1", ["FEAT"]),
+                ],
+            )
+        if "pullRequests(" in query_str:
+            return make_pr_response([])
+        return {}
+
+    monkeypatch.setattr(
+        "gh_service.create_client",
+        lambda token: DummyClient(mock_execute),
+    )
+
+    contribs = fetch_contributions("owner/repo", "dummy_token")
+    assert contribs[0].doc_issue_count == 1
+    assert contribs[0].feature_bug_issue_count == 1
