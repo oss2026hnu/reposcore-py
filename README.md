@@ -46,24 +46,25 @@ Arguments
                             [required]
 
 Options
-  --version             -v                      현재 버전을 출력하고 종료합니다.
-  --format              -f      [csv|txt|html]  출력 파일 형식을 지정합니다. (csv | txt | html)
-                                                [default: txt]
-  --output              -o      TEXT            결과를 저장할 출력 디렉터리 경로입니다. 생략하면
-                                                파일로 저장하지 않고 stdout에 출력합니다. 예:
-                                                ./result
-  --token               -t      TEXT            GitHub Personal Access Token. 미제공 시
-                                                GITHUB_TOKEN 환경 변수를 사용합니다.
-  --aggregate                                   여러 저장소의 결과를 하나로 합산하여 전체 기여
-                                                점수를 출력합니다.
-  --no-cache                                    캐시를 사용하지 않고 GitHub API에서 최신 데이터를
-                                                다시 조회합니다.
-  --since                       TEXT            이 날짜 이후의 기여만 점수 계산에 포함합니다. 예:
-                                                2026-06-01 (YYYY-MM-DD)
-  --until                       TEXT            이 날짜까지의 기여만 점수 계산에 포함합니다. 예:
-                                                2026-06-10 (YYYY-MM-DD)
-  --install-completion                          Install completion for the current shell.
-  --show-completion                             Show completion for the current shell, to copy it
-                                                or customize the installation.
-  --help                                        Show this message and exit.
+  --version             -v            현재 버전을 출력하고 종료합니다.
+  --format              -f      TEXT  출력 파일 형식을 지정합니다. 쉼표(,)로 구분하여 여러 형식을
+                                      동시에 줄 수 있습니다. 사용 가능한 형식: csv, txt, html.
+                                      형식을 아예 주지 않거나 유효한 형식이 없으면 전체 형식을
+                                      모두 출력합니다.
+  --output              -o      TEXT  결과를 저장할 출력 디렉터리 경로입니다. 생략하면 파일로
+                                      저장하지 않고 stdout에 출력합니다. 예: ./result
+  --token               -t      TEXT  GitHub Personal Access Token. 미제공 시 GITHUB_TOKEN 환경
+                                      변수를 사용합니다.
+  --aggregate                         여러 저장소의 결과를 하나로 합산하여 전체 기여 점수를
+                                      출력합니다.
+  --no-cache                          캐시를 사용하지 않고 GitHub API에서 최신 데이터를 다시
+                                      조회합니다.
+  --since                       TEXT  이 날짜 이후의 기여만 점수 계산에 포함합니다. 예: 2026-06-0…
+                                      (YYYY-MM-DD)
+  --until                       TEXT  이 날짜까지의 기여만 점수 계산에 포함합니다. 예: 2026-06-10
+                                      (YYYY-MM-DD)
+  --install-completion                Install completion for the current shell.
+  --show-completion                   Show completion for the current shell, to copy it or
+                                      customize the installation.
+  --help                              Show this message and exit.
 ```

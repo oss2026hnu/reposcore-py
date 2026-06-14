@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date, datetime, timezone
-from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
@@ -32,13 +31,6 @@ def version_callback(value: bool) -> None:
             ver = "unknown"
         typer.echo(ver)
         raise typer.Exit()
-
-
-# --format 옵션을 csv, txt, html로 제한하기 위한 Enum 클래스 정의
-class OutputFormatOption(str, Enum):
-    csv = "csv"
-    txt = "txt"
-    html = "html"
 
 
 def split_repository(repository: str) -> tuple[str, str]:
@@ -96,7 +88,6 @@ def _load_or_fetch_contributions(
         owner, repo_name = split_repository(repo)
         cache_path = None
 
-        # --no-cache 가 지정되면 캐시 경로를 만들지 않아 읽기/쓰기 모두 건너뜁니다.
         if not no_cache and output:
             cache_path = Path(output) / f"{owner}_{repo_name}" / "cache.json"
 
@@ -173,13 +164,18 @@ def main(
             callback=version_callback,
         ),
     ] = False,
-    # 기존 str 타입에서 Enum(OutputFormatOption) 기반 타입으로 변경하여 CLI 검증 추가
+    # [수정] 제한적인 Enum 형식을 과감히 철폐하고 문자열(str) 유연 인터페이스로 전환
     format: Annotated[
-        OutputFormatOption,
+        str | None,
         typer.Option(
-            "--format", "-f", help="출력 파일 형식을 지정합니다. (csv | txt | html)"
+            "--format",
+            "-f",
+            help=(
+                "출력 파일 형식을 지정합니다. 쉼표(,)로 구분하여 여러 형식을 동시에 줄 수 있습니다. "
+                "사용 가능한 형식: csv, txt, html. 형식을 아예 주지 않거나 유효한 형식이 없으면 전체 형식을 모두 출력합니다."
+            ),
         ),
-    ] = OutputFormatOption.txt,
+    ] = None,
     output: Annotated[
         str | None,
         typer.Option(
@@ -202,7 +198,6 @@ def main(
             ),
         ),
     ] = None,
-    # 요구사항에 명시된 다중 저장소 집계 여부 선택을 위한 플래그 추가
     aggregate: Annotated[
         bool,
         typer.Option(
@@ -335,14 +330,37 @@ def main(
         print(f"오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
 
-    # --- 수집 완료 데이터 출력 및 집계(--aggregate) 제어 로직 ---
-    format_value = format.value
+    # ── [이슈 구현] 쉼표 매핑 기반 5단계 정규화 파이프라인 수립 ──
+    allowed_formats = ["csv", "txt", "html"]
+    selected_formats = []
+
+    if not format or not format.strip():
+        # 인자가 주어지지 않았거나 공백만 왔을 때 stderr 가이드라인 출력 후 전체 가동
+        print("안내: 형식을 지정하지 않았거나 유효한 형식이 없어 전체 형식(csv, txt, html)을 출력합니다.", file=sys.stderr)
+        selected_formats = list(allowed_formats)
+    else:
+        # 1~4단계 정규화 처리: 쉼표 분할 ➔ 공백 제거 ➔ 소문자 정렬 ➔ 빈 문자열 탈락
+        tokens = [t.strip().lower() for t in format.split(",") if t.strip()]
+        
+        # 5단계 정규화 처리: 원본 순서를 유지하며 중복만 깔끔하게 제거 (dict.fromkeys 치트키 활용)
+        unique_tokens = list(dict.fromkeys(tokens))
+        
+        for token in unique_tokens:
+            if token in allowed_formats:
+                selected_formats.append(token)
+            else:
+                # 유효하지 않은 형식 포함 시 안내 스킵 및 필터링
+                print(f"안내: '{token}'은(는) 지원하지 않는 형식입니다. 제외하고 남은 유효 형식을 사용합니다. (가능한 형식: csv, txt, html)", file=sys.stderr)
+        
+        # 선별 결과 남은 형식이 단 하나도 없으면 복구 조치 수행
+        if not selected_formats:
+            print("안내: 유효한 형식을 찾을 수 없어 전체 형식(csv, txt, html)을 모두 출력합니다.", file=sys.stderr)
+            selected_formats = list(allowed_formats)
 
     try:
         if aggregate:
             scores = calculate_total_scores(all_contributions)
         else:
-            # 저장소별로 점수를 매긴 뒤 하나의 목록으로 펼칩니다.
             scores = [
                 score
                 for repo_contributions in all_contributions
@@ -350,8 +368,12 @@ def main(
             ]
 
         results = [_score_to_result(score) for score in scores]
-        content = build_output(results, format_value)
-        write_output(content, output, format_value)
+        
+        # [핵심] 정규화 필터를 통과해 선별된 다중 포맷 배열을 순회하며 일괄 파일 생성
+        for fmt in selected_formats:
+            content = build_output(results, fmt)
+            write_output(content, output, fmt)
+            
     except Exception as error:
         print(f"출력 오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
