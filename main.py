@@ -10,36 +10,15 @@ from typing import Annotated
 
 import typer
 from gql.transport.exceptions import TransportQueryError, TransportServerError
-from pydantic import ValidationError
 
 from cache_manager import load_cache, save_cache
 from calc_score import (
     UserContributionCounts,
-    UserScore,
     calculate_repository_scores,
     calculate_total_scores,
 )
-# fetch_open_issue_claims 함수 임포트 추가
-from gh_service import (
-    DEFAULT_PAGE_SIZE,
-    fetch_contributions,
-    fetch_multiple_contributions,
-    fetch_open_issue_claims,
-)
+from gh_service import fetch_contributions, fetch_multiple_contributions
 from output_writer import build_output, write_output
-
-DEFAULT_REPOSITORY = "oss2026hnu/reposcore-py"
-
-# 기본 선점 키워드 상수 추가
-DEFAULT_CLAIM_KEYWORDS = [
-    "제가 하겠습니다",
-    "진행하겠습니다",
-    "할게요",
-    "I'll take this",
-]
-
-CACHE_SCHEMA_VERSION = 1
-CACHE_TTL_SECONDS = 60 * 60
 
 app = typer.Typer(help="reposcore-py CLI")
 
@@ -54,7 +33,6 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-# --format 옵션을 csv, txt, html로 제한하기 위한 Enum 클래스 정의
 class OutputFormatOption(str, Enum):
     csv = "csv"
     txt = "txt"
@@ -70,66 +48,6 @@ def split_repository(repository: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-def _validate_unique_repositories(repos: list[str]) -> None:
-    """입력된 저장소 목록 중 중복된 저장소가 있는지 유효성을 검증합니다."""
-    seen = set()
-    for repo in repos:
-        # 형식 유효성을 먼저 확인한 뒤 중복성 검사를 수행합니다.
-        split_repository(repo)
-        
-        repo_lower = repo.lower()
-        if repo_lower in seen:
-            raise ValueError(f"같은 저장소가 중복 입력되었습니다: {repo}")
-        seen.add(repo_lower)
-
-
-def _format_cache_date(value: date | None) -> str | None:
-    return value.isoformat() if value is not None else None
-
-
-def _is_cache_valid(cached_data, since, until):
-    if not isinstance(cached_data, dict):
-        return False
-    if "contributions" not in cached_data:
-        return False
-
-    contributions = cached_data["contributions"]
-    if not isinstance(contributions, list):
-        return False
-    if not all(isinstance(item, dict) for item in contributions):
-        return False
-
-    metadata = cached_data.get("metadata")
-    if not isinstance(metadata, dict):
-        return False
-
-    if metadata.get("schemaVersion") != CACHE_SCHEMA_VERSION:
-        return False
-
-    if metadata.get("since") != _format_cache_date(since):
-        return False
-
-    if metadata.get("until") != _format_cache_date(until):
-        return False
-
-    generated_at = metadata.get("generatedAt")
-    if not isinstance(generated_at, str):
-        return False
-
-    try:
-        generated_datetime = datetime.fromisoformat(
-            generated_at.replace("Z", "+00:00")
-        )
-    except ValueError:
-        return False
-
-    now = datetime.now(timezone.utc)
-
-    if (now - generated_datetime).total_seconds() > CACHE_TTL_SECONDS:
-        return False
-
-    return True
-
 def _dump_contributions(
     contributions: list[UserContributionCounts],
 ) -> list[dict]:
@@ -141,32 +59,13 @@ def _dump_contributions(
     ]
 
 
-def _score_to_result(score: UserScore) -> dict:
-    """UserScore를 output_writer가 기대하는 dict 형태로 변환합니다."""
-    contribution = score.contribution
-    return {
-        "nameWithOwner": contribution.user,
-        "issues": {
-            "totalCount": contribution.feature_bug_issue_count
-            + contribution.doc_issue_count,
-        },
-        "pullRequests": {
-            "totalCount": contribution.feature_bug_pr_count
-            + contribution.doc_pr_count
-            + contribution.typo_pr_count,
-        },
-        "totalScore": score.score,
-    }
-
-
 def _load_or_fetch_contributions(
     repos: list[str],
     token: str,
-    output: str,
-    cache: bool = True,  # 기존 no_cache: bool = False 에서 cache 플래그 구조로 변경
+    output: str | None,
+    no_cache: bool = False,
     since: date | None = None,
     until: date | None = None,
-    page_size: int = DEFAULT_PAGE_SIZE,
 ) -> list[list[UserContributionCounts]]:
     all_contributions: list[list[UserContributionCounts]] = [[] for _ in repos]
     cache_paths: list[Path | None] = []
@@ -177,24 +76,17 @@ def _load_or_fetch_contributions(
         owner, repo_name = split_repository(repo)
         cache_path = None
 
-        # 원래의 역방향 로직(!no_cache)을 표준 직관적 로직(cache 플래그 활성화 시)으로 가독성 리팩토링
-        if cache:
+        if not no_cache and output:
             cache_path = Path(output) / f"{owner}_{repo_name}" / "cache.json"
 
         cache_paths.append(cache_path)
         cached_data = load_cache(cache_path) if cache_path else {}
 
-        parsed = None
-        if _is_cache_valid(cached_data, since, until):
-            try:
-                parsed = [
-                    UserContributionCounts(**c) for c in cached_data["contributions"]
-                ]
-            except ValidationError:
-                parsed = None
-
-        if parsed is not None:
-            all_contributions[index] = parsed
+        if "contributions" in cached_data:
+            all_contributions[index] = [
+                UserContributionCounts(**contribution)
+                for contribution in cached_data["contributions"]
+            ]
         else:
             missing_indexes.append(index)
             missing_repos.append(repo)
@@ -202,7 +94,7 @@ def _load_or_fetch_contributions(
     if missing_repos:
         if len(missing_repos) == 1:
             fetched_contributions = [
-                fetch_contributions(missing_repos[0], token, since, until, page_size)
+                fetch_contributions(missing_repos[0], token, since, until)
             ]
         else:
             fetched_contributions = fetch_multiple_contributions(
@@ -210,7 +102,6 @@ def _load_or_fetch_contributions(
                 token,
                 since,
                 until,
-                page_size,
             )
 
         for index, repo, contributions in zip(
@@ -231,12 +122,10 @@ def _load_or_fetch_contributions(
                             "repository": repo,
                             "owner": owner,
                             "name": repo_name,
-                            "schemaVersion": CACHE_SCHEMA_VERSION,
+                            "schemaVersion": 1,
                             "generatedAt": datetime.now(timezone.utc)
                             .isoformat(timespec="seconds")
                             .replace("+00:00", "Z"),
-                            "since": _format_cache_date(since),
-                            "until": _format_cache_date(until),
                         },
                         "contributions": _dump_contributions(contributions),
                     },
@@ -266,20 +155,20 @@ def main(
     format: Annotated[
         OutputFormatOption,
         typer.Option(
-            "--format",
-            "-f",
-            help="출력 파일 형식을 지정합니다. (csv | txt | html)",
-            case_sensitive=False,
+            "--format", "-f", help="출력 파일 형식을 지정합니다. (csv | txt | html)"
         ),
     ] = OutputFormatOption.txt,
     output: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--output",
             "-o",
-            help="결과를 저장할 출력 디렉터리 경로입니다.",
+            help=(
+                "결과를 저장할 출력 디렉터리 경로입니다. "
+                "생략하면 파일로 저장하지 않고 stdout에 출력합니다. 예: ./result"
+            ),
         ),
-    ] = "./result",
+    ] = None,
     token: Annotated[
         str | None,
         typer.Option(
@@ -291,7 +180,6 @@ def main(
             ),
         ),
     ] = None,
-    # 요구사항에 명시된 다중 저장소 집계 여부 선택을 위한 플래그 추가
     aggregate: Annotated[
         bool,
         typer.Option(
@@ -299,14 +187,13 @@ def main(
             help="여러 저장소의 결과를 하나로 합산하여 전체 기여 점수를 출력합니다.",
         ),
     ] = False,
-    # [핵심 요구사항 수정 완수] Typer 표준 방식의 한 쌍 대칭형 옵션(--cache/--no-cache) 주입 완료
-    cache: Annotated[
+    no_cache: Annotated[
         bool,
         typer.Option(
-            "--cache/--no-cache",
-            help="GitHub API 조회 시 로컬 캐시 데이터 자동 최신화 및 사용 여부",
+            "--no-cache",
+            help="캐시를 사용하지 않고 GitHub API에서 최신 데이터를 다시 조회합니다.",
         ),
-    ] = True,
+    ] = False,
     since: Annotated[
         str | None,
         typer.Option(
@@ -327,43 +214,11 @@ def main(
             ),
         ),
     ] = None,
-    # main.py에 --claims 옵션 추가
-    claims: Annotated[
-        bool,
-        typer.Option(
-            "--claims",
-            help="열린 issue의 선점 현황을 조회합니다.",
-        ),
-    ] = False,
-    # main.py에 --keywords 옵션 추가
-    keywords: Annotated[
-        str | None,
-        typer.Option(
-            "--keywords",
-            help="이슈 선점 키워드 목록입니다. 쉼표로 구분합니다.",
-        ),
-    ] = None,
-    page_size: Annotated[
-        int,
-        typer.Option(
-            "--page-size",
-            help="GraphQL 페이지네이션의 페이지 크기입니다. (1~100)",
-            envvar="REPOSCORE_PAGE_SIZE",
-            min=1,
-            max=100,
-        ),
-    ] = DEFAULT_PAGE_SIZE,
 ) -> None:
     """Fetch basic repository counts from GitHub GraphQL API."""
 
     if len(repos) == 0:
         print("오류: 저장소를 하나 이상 입력해주세요.", file=sys.stderr)
-        raise typer.Exit(1)
-
-    try:
-        _validate_unique_repositories(repos)
-    except ValueError as error:
-        print(f"오류: {error}", file=sys.stderr)
         raise typer.Exit(1)
 
     resolved_token = token or os.environ.get("GITHUB_TOKEN")
@@ -372,89 +227,6 @@ def main(
             "오류: GITHUB_TOKEN 환경 변수 또는 --token 옵션이 필요합니다.", err=True
         )
         raise typer.Exit(1)
-
-    # --claims 모드 조건 부합 시 점수 계산 흐름으로 진입하지 않고 선점 현황만 출력 후 즉시 종료
-    if claims:
-        claim_keywords = (
-            [kw.strip() for kw in keywords.split(",")]
-            if keywords
-            else DEFAULT_CLAIM_KEYWORDS
-        )
-
-        for repo in repos:
-            try:
-                open_issues = fetch_open_issue_claims(repo, resolved_token)
-                
-                claimed_issues = []
-                unclaimed_issues = []
-                
-                for issue in open_issues:
-                    matched_kw = None
-                    claimant = None
-                    
-                    comments_nodes = issue.get("comments", {}).get("nodes", [])
-                    if comments_nodes:
-                        latest_comment = comments_nodes[0]
-                        body = latest_comment.get("body", "")
-                        
-                        # 댓글 본문에서 선점 키워드 감지
-                        for kw in claim_keywords:
-                            if kw in body:
-                                matched_kw = kw
-                                claimant = (
-                                    latest_comment.get("author", {}).get("login")
-                                    if latest_comment.get("author")
-                                    else "알 수 없음"
-                                )
-                                break
-                    
-                    if matched_kw:
-                        claimed_issues.append({
-                            "number": issue["number"],
-                            "title": issue["title"],
-                            "claimant": claimant,
-                            "keyword": matched_kw
-                        })
-                    else:
-                        unclaimed_issues.append({
-                            "number": issue["number"],
-                            "title": issue["title"]
-                        })
-                
-                if len(repos) > 1:
-                    print(f"=== Repository: {repo} ===")
-                    print()
-
-                claimed_count = len(claimed_issues)
-                unclaimed_count = len(unclaimed_issues)
-                total_count = claimed_count + unclaimed_count
-
-                print("Claim Summary\n")
-                print(f"Total open issues: {total_count}")
-                print(f"Claimed issues: {claimed_count}")
-                print(f"Unclaimed issues: {unclaimed_count}")
-                print()
-                
-                # 요구사항 레이아웃 명세대로 분리 출력
-                print("Claimed Issues\n")
-                for ci in claimed_issues:
-                    print(f"- #{ci['number']} {ci['title']}")
-                    print(f"  Claimed by: {ci['claimant']}")
-                    print(f"  Matched keyword: {ci['keyword']}")
-                if not claimed_issues:
-                    print("(선점된 이슈가 없습니다.)\n")
-                
-                print("\nUnclaimed Issues\n")
-                for ui in unclaimed_issues:
-                    print(f"- #{ui['number']} {ui['title']}")
-                if not unclaimed_issues:
-                    print("(미선점된 이슈가 없습니다.)\n")
-                print()
-                
-            except Exception as error:
-                print(f"오류 ({repo}): {error}", file=sys.stderr)
-                raise typer.Exit(1) from error
-        raise typer.Exit(0)
 
     parsed_since: date | None = None
     parsed_until: date | None = None
@@ -494,10 +266,9 @@ def main(
             repos,
             resolved_token,
             output,
-            cache,  # 내부 수집 제어 함수에 수정한 cache 플래그 주입
+            no_cache,
             parsed_since,
             parsed_until,
-            page_size,
         )
 
     except ValueError as error:
@@ -541,26 +312,22 @@ def main(
         print(f"오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
 
-    # --- 수집 완료 데이터 출력 및 집계(--aggregate) 제어 로직 ---
     format_value = format.value
 
     try:
         if aggregate:
             scores = calculate_total_scores(all_contributions)
         else:
-            scores = [
-                score
-                for repo_contributions in all_contributions
-                for score in calculate_repository_scores(repo_contributions)
+            flat_contributions = [
+                contrib
+                for repo_contribs in all_contributions
+                for contrib in repo_contribs
             ]
+            scores = calculate_repository_scores(flat_contributions)
 
-        results = [_score_to_result(score) for score in scores]
+        content = build_output(scores, format_value)
+        write_output(content, output, format_value)
 
-        content = build_output(results, format_value)
-        saved_path = write_output(content, output, format_value)
-
-        print("결과가 다음 경로에 저장되었습니다:")
-        print(f"  - {saved_path.absolute()}")
     except Exception as error:
         print(f"출력 오류: {error}", file=sys.stderr)
         raise typer.Exit(1) from error
@@ -572,3 +339,4 @@ def cli() -> None:
 
 if __name__ == "__main__":
     cli()
+    

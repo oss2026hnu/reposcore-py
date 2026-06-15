@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from calc_score import UserContributionCounts, UserScore
 from output_writer import (
     build_csv_output,
     build_html_output,
@@ -12,16 +13,29 @@ from output_writer import (
 )
 
 
-# output_writer 가 기대하는 입력 구조 (GraphQL 응답과 동일한 중첩 dict)
-def make_result(name: str, issues: int, prs: int) -> dict:
-    return {
-        "nameWithOwner": name,
-        "issues": {"totalCount": issues},
-        "pullRequests": {"totalCount": prs},
-    }
+def make_score(
+    user: str,
+    feature_bug_pr: int = 0,
+    doc_pr: int = 0,
+    typo_pr: int = 0,
+    feature_bug_issue: int = 0,
+    doc_issue: int = 0,
+    score: int = 0,
+) -> UserScore:
+    return UserScore(
+        contribution=UserContributionCounts(
+            user=user,
+            feature_bug_pr_count=feature_bug_pr,
+            doc_pr_count=doc_pr,
+            typo_pr_count=typo_pr,
+            feature_bug_issue_count=feature_bug_issue,
+            doc_issue_count=doc_issue,
+        ),
+        score=score,
+    )
 
 
-SAMPLE = [make_result("owner/repo1", 5, 3)]
+SAMPLE = [make_score("alice", feature_bug_pr=1, doc_issue=2, score=5)]
 
 
 # ── normalize_output_format ────────────────────────────────
@@ -42,35 +56,82 @@ def test_normalize_rejects_unsupported_format():
 # ── build_csv_output ───────────────────────────────────────
 def test_csv_has_header_and_row():
     out = build_csv_output(SAMPLE)
-    # csv.writer 는 \r\n 으로 줄을 끝내므로 정확히 일치 비교 대신 부분 포함으로 검증
-    assert "repo,issues,pull_requests" in out
-    assert "owner/repo1" in out
-    assert ",5," in out
-    assert ",3" in out
+    expected_header = (
+        "user,feature_bug_pr,doc_pr,typo_pr,feature_bug_issue,doc_issue,total_score"
+    )
+    assert expected_header in out
+    assert "alice" in out
+    assert ",5" in out
+
+
+def test_csv_detail_counts_preserved():
+    scores = [make_score("bob", feature_bug_pr=2, doc_pr=1, typo_pr=3, score=11)]
+    out = build_csv_output(scores)
+    assert ",2," in out
+    assert ",1," in out
+    assert ",3," in out
 
 
 # ── build_txt_output ───────────────────────────────────────
 def test_txt_has_headers_and_values():
     out = build_txt_output(SAMPLE)
-    for header in ("repo", "issues", "pull_requests"):
+    for header in (
+        "user",
+        "feature_bug_pr",
+        "doc_pr",
+        "typo_pr",
+        "feature_bug_issue",
+        "doc_issue",
+        "total_score",
+    ):
         assert header in out
-    assert "owner/repo1" in out
+    assert "alice" in out
     assert "5" in out
-    assert "3" in out
+
+
+def test_txt_no_repo_header():
+    out = build_txt_output(SAMPLE)
+    assert "repo" not in out
 
 
 # ── build_html_output ──────────────────────────────────────
-def test_html_has_canvas_and_name():
+def test_html_has_table_and_user():
     out = build_html_output(SAMPLE)
-    assert '<canvas id="myChart"></canvas>' in out
-    assert "owner/repo1" in out
+    assert "<table>" in out
+    assert "alice" in out
+
+
+def test_html_has_user_header_not_repo():
+    out = build_html_output(SAMPLE)
+    assert "<th>user</th>" in out
+    assert "<th>repo</th>" not in out
+
+
+def test_html_has_all_detail_headers():
+    out = build_html_output(SAMPLE)
+    for header in (
+        "feature_bug_pr",
+        "doc_pr",
+        "typo_pr",
+        "feature_bug_issue",
+        "doc_issue",
+        "total_score",
+    ):
+        assert f"<th>{header}</th>" in out
 
 
 def test_html_escapes_special_characters():
-    out = build_html_output([make_result("a<b>&x", 1, 2)])
-    assert "\\u003c" in out
-    assert "\\u003e" in out
-    assert "<b>" not in out  # 원본 특수문자가 그대로 남으면 안 됨
+    out = build_html_output([make_score("a<b>&x", score=1)])
+    assert "&lt;" in out
+    assert "&gt;" in out
+    assert "&amp;" in out
+    assert "<b>" not in out
+
+
+def test_html_score_always_present():
+    out = build_html_output([make_score("carol", feature_bug_pr=1, score=3)])
+    assert "<th>total_score</th>" in out
+    assert "<td>3</td>" in out
 
 
 # ── build_output 분기 ──────────────────────────────────────
@@ -91,12 +152,19 @@ def test_build_output_rejects_unsupported_format():
         build_output(SAMPLE, "json")
 
 
+# ── write_output: stdout ───────────────────────────────────
+def test_write_output_to_stdout(capsys):
+    result = write_output("hello-content", None, "csv")
+    captured = capsys.readouterr()
+    assert result is None
+    assert "hello-content" in captured.out
+
+
 # ── write_output: 파일 저장 ────────────────────────────────
 @pytest.mark.parametrize("fmt", ["csv", "txt", "html"])
 def test_write_output_creates_result_file(tmp_path, fmt):
     content = f"sample-{fmt}"
     result_path = write_output(content, str(tmp_path), fmt)
-
     expected = tmp_path / f"results.{fmt}"
     assert result_path == expected
     assert expected.exists()
